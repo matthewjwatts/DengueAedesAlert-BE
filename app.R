@@ -3,6 +3,7 @@ library(shinydashboard)
 library(leaflet)
 library(leaflet.providers)
 library(DT)
+library(sf)
 library(shinyalert)
 
 # Global variables to store the data frames
@@ -27,6 +28,19 @@ if (!exists("dengue_data")) {
     stringsAsFactors = FALSE
   )
 }
+
+# Check if postaldistricts exists, if not, load it
+if (!exists("postaldistricts")) {
+  postaldistricts <<- st_read("data/postaldistricts.geojson")
+}
+
+# Check if postaldistricts exists, if not, load it
+if (!exists("valid_postcodes")) {
+  valid_postcodes <<-  unique(postaldistricts$Postcode)
+}
+
+
+
 
 ui <- dashboardPage(
   dashboardHeader(title = "Dengue Risk Belgium"),
@@ -97,12 +111,16 @@ server <- function(input, output, session) {
         return(NULL)
       }
       
-      # Validate data
+      #########################
+      # Validate data for Aedes
+      #########################
+      
+      
       validation_errors <- list()
-      if (!is.character(uploaded_file$Observation_ID)) validation_errors <- c(validation_errors, "Observation_ID must be a string and not empty")
+      if (!is.character(uploaded_file$Observation_ID) || any(uploaded_file$Observation_ID == "")) validation_errors <- c(validation_errors, "Observation_ID must be a non-empty string")
       if (!is.character(uploaded_file$Site_codes)) validation_errors <- c(validation_errors, "Site_codes must be a string")
       if (!is.character(uploaded_file$Municipality)) validation_errors <- c(validation_errors, "Municipality must be a string.")
-      if (!all(nchar(as.character(uploaded_file$Postcode)) == 4 & is.numeric(as.numeric(uploaded_file$Postcode)))) validation_errors <- c(validation_errors, "Postcode must be a four-digit numerical code.")
+      if (!all(uploaded_file$Postcode %in% valid_postcodes)) validation_errors <- c(validation_errors, "Postcode must exist in the valid postcodes list.")
       if (!all(uploaded_file$Latitude >= -90 & uploaded_file$Latitude <= 90)) validation_errors <- c(validation_errors, "Latitude must be between -90 and 90 degrees.")
       if (!all(uploaded_file$Longitude >= -180 & uploaded_file$Longitude <= 180)) validation_errors <- c(validation_errors, "Longitude must be between -180 and 180 degrees.")
       if (!is.character(uploaded_file$Site_type)) validation_errors <- c(validation_errors, "Site_type must be a string.")
@@ -118,7 +136,7 @@ server <- function(input, output, session) {
       uploaded_file <- read.csv(input$file1$datapath, header = TRUE)
       
       # Validate columns for dengue_data
-      required_columns <- c("Observation_ID", "Other_Columns") # Add appropriate required columns for dengue_data
+      required_columns <- c("Sample_ID", "Source_country", "Postcode", 'Report_date') # Add appropriate required columns for dengue_data
       
       if (!all(required_columns %in% colnames(uploaded_file))) {
         shinyalert("Error", "The uploaded file does not have the required columns for Dengue Data.", type = "error")
@@ -126,10 +144,15 @@ server <- function(input, output, session) {
         return(NULL)
       }
       
+      ###############################
       # Validate data for dengue_data
+      ###############################
+      
       validation_errors <- list()
-      if (!is.character(uploaded_file$Observation_ID)) validation_errors <- c(validation_errors, "Observation_ID must be a string and not empty")
-      # Add other validation checks specific to dengue_data
+      if (!is.character(uploaded_file$Sample_ID) || any(uploaded_file$Sample_ID == "")) validation_errors <- c(validation_errors, "Sample_ID must be a non-empty string")
+      if (!is.character(uploaded_file$Source_country)) validation_errors <- c(validation_errors, "Source_country must be a string")
+      if (!all(uploaded_file$Postcode %in% valid_postcodes)) validation_errors <- c(validation_errors, "Postcode must exist in the valid postcodes list.")
+      if (!all(grepl("^\\d{4}-\\d{2}-\\d{2}$", as.character(uploaded_file$Report_date)))) validation_errors <- c(validation_errors, "Report_date must be in YYYY-MM-DD format.")
       
       if (length(validation_errors) > 0) {
         shinyalert("Validation Errors", paste(validation_errors, collapse = "; "), type = "error")
@@ -137,6 +160,7 @@ server <- function(input, output, session) {
         return(NULL)
       }
     }
+    
     
     file_data(uploaded_file)
     output$data_table <- renderDT(uploaded_file)
@@ -162,16 +186,20 @@ server <- function(input, output, session) {
     } else if (dataset_type == "dengue") {
       # Append the new data to the existing global data frame
       dengue_data <<- rbind(dengue_data, save_data)
-      # Remove duplicates based on Observation_ID
-      dengue_data <<- dengue_data[!duplicated(dengue_data$Observation_ID), ]
+      # Remove duplicates based on Sample_ID
+      dengue_data <<- dengue_data[!duplicated(dengue_data$Sample_ID), ]
       
       # Assign the updated dataframe to the global environment
       assign("dengue_data", dengue_data, envir = .GlobalEnv)
       
       output$message <- renderText("File has been appended to the global 'dengue_data' data frame")
     }
+    
     # Hide the verification panel after confirmation
     show_verification(FALSE)
+    
+    # Clear messages
+    output$message <- renderText(NULL)
     
     # Show success message
     shinyalert("Success", "Upload successful!", type = "success")
@@ -181,6 +209,10 @@ server <- function(input, output, session) {
     # Clear the file_data and hide the verification panel
     file_data(NULL)
     show_verification(FALSE)
+    
+    # Clear messages
+    output$message <- renderText(NULL)
+    
     output$message <- renderText("Upload cancelled.")
   })
   
@@ -198,4 +230,6 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
+
 

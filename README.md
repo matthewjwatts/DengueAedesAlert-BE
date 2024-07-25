@@ -20,7 +20,7 @@ renv::init()
 
 | Observation_ID | Site_codes | Municipality | Postcode                  | Latitude             | Longitude            | Site_type     | Detection_date       |
 |---------|---------|---------|---------|---------|---------|---------|---------|
-| Numeric        | String     | String       | Four-digit numerical code | Decimal (8,5) format | Decimal (8,5) format | String format | `YYYY-MM-DD` format |
+| Numeric        | String     | String       | Four-digit numerical code | Decimal format, between -90 and 90 degrees | Decimal format between -180 and 180 degrees | String format | `YYYY-MM-DD` format |
 
 ## *Dengue* imports surveillance data notes:
 
@@ -38,7 +38,7 @@ There ares ome inconsistencies in this dataset, including labeling of source cou
 
 ### Data file format:
 
-| Sample_ID | Country | Postal_code       | Date                 |
+| Sample_ID | Source_country | Postcode       | Report_date                 |
 |-----------|---------|-------------------|----------------------|
 | Numeric   | String  | Numeric, 4 digits | `YYYY-MM-DD` format. |
 

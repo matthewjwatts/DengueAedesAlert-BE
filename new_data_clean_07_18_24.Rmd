@@ -1,0 +1,158 @@
+---
+title: "new_data_clean_07_18_24"
+output: html_document
+date: "2024-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(sf)
+library(readxl)
+
+belgium_shp <- st_read("data/postaldistricts.shp")
+
+```
+
+```{r}
+
+Ae_albopictus_distribution <- read_excel("data/Ae_albopictus_2018_2023.xlsx")
+
+```
+
+
+```{r}
+
+# Rename post code area
+
+belgium_shp <- dplyr::rename(belgium_shp, Postcode = nouveau_PO)
+
+belgium_shp$Postcode <- as.numeric(belgium_shp$Postcode)
+
+
+# summarise shapes based on postcodes
+belgium_shp <- belgium_shp %>%
+  select(Postcode) %>%
+  group_by(Postcode) %>%
+  summarise() %>%
+  ungroup()
+
+# Step 1: Make all geometries valid
+belgium_shp <- st_make_valid(belgium_shp)
+# Step 2: Remove NA geometries, if any
+belgium_shp <- belgium_shp[!is.na(belgium_shp$geometry), ]
+
+# Step 3: Apply a zero-width buffer to clean geometries further
+belgium_shp <- st_buffer(belgium_shp, 0.0)
+
+st_write(belgium_shp, "data/postaldistricts.geojson")
+
+```
+
+```{r}
+# Reshape the dataset, get all the observation years in the dataset
+
+# Extracting the column names as a vector
+column_names <- names(Ae_albopictus_distribution)
+
+# This will return a logical vector where TRUE represents a numeric value
+is_numeric <- grepl("^[0-9]+$", column_names)
+
+# Filter the vector to get only numeric entries
+columns_to_transform <- column_names[is_numeric]
+
+# First merge the two columns so years & presence are in a row.  
+
+# Transform data from wide to long format
+long_aedes_data <- Ae_albopictus_distribution %>%
+  pivot_longer(
+    cols = all_of(columns_to_transform),         # Specify the columns to pivot (excluding 'id')
+    names_to = "year",  # Name of the new column for the years
+    values_to = "detection" # Name of the new column for the presence values
+  )
+
+# Create a new date column
+long_aedes_data$Detection_date <- ymd(paste(long_aedes_data$year, long_aedes_data$detection, "01", sep = "-"))
+
+long_aedes_data <- dplyr::filter(long_aedes_data, !is.na(Detection_date))
+
+### Generate unique ID
+
+# Function to keep only digits
+keep_digits <- function(x) {
+  gsub("[^0-9]", "", x)
+}
+
+# Concatenate columns and remove non-digit characters
+long_aedes_data$ID <- paste(long_aedes_data$Latitude, long_aedes_data$Longitude, long_aedes_data$Detection_date, sep = "")
+
+# Apply the function to remove non-digit characters
+long_aedes_data$ID  <- sapply(long_aedes_data$ID, keep_digits)
+
+long_aedes_data <- dplyr::rename(long_aedes_data, Observation_ID = "ID", Site_codes = "Site codes")
+
+
+# Save the data frame as a CSV file
+write.csv(long_aedes_data, "aedes_data.csv", row.names = FALSE)
+
+```
+
+```{r}
+
+##########################################################
+# Dengue 
+##########################################################
+
+library(readxl)
+library(tidyverse)
+
+DENV_Belgium <- read_excel("data/Dengue for dashboard.xlsx", 
+     col_types = c("text", "date", "date", 
+         "text",  "text"))
+
+
+```
+
+
+```{r}
+
+DENV_Belgium <- dplyr::rename(DENV_Belgium, Sample_ID = 'Sample ID', Report_date = 'Aanvraag', Postcode = 'Postal code', Source_country = 'Country')
+
+
+```
+
+
+```{r}
+
+valid_postcodes <-  unique(belgium_shp$nouveau_PO)
+
+```
+
+
+```{r}
+
+DENV_Belgium <- DENV_Belgium %>%
+  select(-Afname)
+
+# Filter the dataframe to keep only rows with postcodes in the list
+filtered_DENV_Belgium <- DENV_Belgium %>%
+  filter(Postcode %in% valid_postcodes)
+
+
+filtered_DENV_Belgium <- dplyr::filter(filtered_DENV_Belgium,  !is.na(Report_date))
+
+
+
+```
+
+```{r}
+
+write.csv(filtered_DENV_Belgium, 'data/fixed_dengue_data.csv')
+
+```
+
+

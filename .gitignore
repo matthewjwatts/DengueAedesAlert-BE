@@ -2,5 +2,14 @@
 .Rhistory
 .RData
 .Ruserdata
-*.csv
 data/
+# Ignore all data files
+*.csv
+*.txt
+*.xlsx
+*.xls
+*.json
+*.xml
+*.sav
+*.dta
+*.dat
