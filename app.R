@@ -9,7 +9,7 @@ library(shinyalert)
 # Global variables to store the data frames
 if (!exists("aedes_data")) {
   aedes_data <<- data.frame(
-    Observation_ID = integer(),
+    Observation_ID = character(),
     Site_codes = character(),
     Municipality = character(),
     Postcode = numeric(),
@@ -23,11 +23,18 @@ if (!exists("aedes_data")) {
 
 if (!exists("dengue_data")) {
   dengue_data <<- data.frame(
-    Observation_ID = integer(),
-    Other_Columns = character(), # Add appropriate columns for dengue_data
+    Sample_ID = character(),
+    Report_date  = as.Date(character()),
+    Source_country = character(),
+    Postcode = numeric(),
     stringsAsFactors = FALSE
   )
 }
+
+
+
+
+
 
 # Check if postaldistricts exists, if not, load it
 if (!exists("postaldistricts")) {
@@ -55,7 +62,13 @@ ui <- dashboardPage(
     useShinyalert(),
     tabItems(
       tabItem(tabName = "RealtimeRisk",
-              h1("Realtime risk locations")),
+              h1("Realtime risk locations"),
+              # Place the slider input in the main page content
+              sliderInput("weeks_before", 
+                          "Select weeks before current date:",
+                          min = 1, max = 4, value = 1, step = 1),
+              leafletOutput("realtime_map", height = "600px")
+      ),
       tabItem(tabName = "HistoricalRisk",
               h1("Historical risk locations")),
       tabItem(tabName = "DataManagement",
@@ -72,8 +85,12 @@ ui <- dashboardPage(
 )
 
 server <- function(input, output, session) {
+  
   file_data <- reactiveVal(NULL)
   show_verification <- reactiveVal(FALSE)
+    
+
+  
   
   observeEvent(input$file1, {
     req(input$file1)  # Ensure a file is uploaded
@@ -132,6 +149,10 @@ server <- function(input, output, session) {
         return(NULL)
       }
       
+      ############################
+      # Controls for aedes uploads
+      ############################
+      
     } else if (dataset_type == "dengue") {
       uploaded_file <- read.csv(input$file1$datapath, header = TRUE)
       
@@ -148,8 +169,9 @@ server <- function(input, output, session) {
       # Validate data for dengue_data
       ###############################
       
+
       validation_errors <- list()
-      if (!is.character(uploaded_file$Sample_ID) || any(uploaded_file$Sample_ID == "")) validation_errors <- c(validation_errors, "Sample_ID must be a non-empty string")
+      if (!is.numeric(uploaded_file$Sample_ID) || any(uploaded_file$Sample_ID == "")) validation_errors <- c(validation_errors, "Sample_ID must be a non-empty string")
       if (!is.character(uploaded_file$Source_country)) validation_errors <- c(validation_errors, "Source_country must be a string")
       if (!all(uploaded_file$Postcode %in% valid_postcodes)) validation_errors <- c(validation_errors, "Postcode must exist in the valid postcodes list.")
       if (!all(grepl("^\\d{4}-\\d{2}-\\d{2}$", as.character(uploaded_file$Report_date)))) validation_errors <- c(validation_errors, "Report_date must be in YYYY-MM-DD format.")

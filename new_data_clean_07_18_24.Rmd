@@ -128,7 +128,7 @@ DENV_Belgium <- dplyr::rename(DENV_Belgium, Sample_ID = 'Sample ID', Report_date
 
 ```{r}
 
-valid_postcodes <-  unique(belgium_shp$nouveau_PO)
+valid_postcodes <-  unique(belgium_shp$Postcode)
 
 ```
 
@@ -149,9 +149,10 @@ filtered_DENV_Belgium <- dplyr::filter(filtered_DENV_Belgium,  !is.na(Report_dat
 
 ```
 
+
 ```{r}
 
-write.csv(filtered_DENV_Belgium, 'data/fixed_dengue_data.csv')
+write.csv(filtered_DENV_Belgium, 'data/clean_dengue_data.csv', row.names = FALSE)
 
 ```
 
