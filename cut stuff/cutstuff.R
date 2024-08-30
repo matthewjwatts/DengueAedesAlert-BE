@@ -70,3 +70,32 @@ output$realtime_map <- renderLeaflet({
       options = layersControlOptions(collapsed = FALSE)
     )
 })
+
+
+```{r}
+
+
+aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+
+
+# Define the bounding box for Belgium manually
+belgium_bbox <- list(
+  xmin = 2.524,  # Westernmost longitude
+  ymin = 49.496, # Southernmost latitude
+  xmax = 6.408,  # Easternmost longitude
+  ymax = 51.505  # Northernmost latitude
+)
+
+# Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
+aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
+
+# Create the leaflet map
+leaflet(data = aedes_dengue_matches) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(color = "red", weight = 2, fillOpacity = 0.5, 
+              popup = ~paste("Municipality: ", Municipality,  "; Post Code:", Postcode)) %>%  # Plot polygons in red
+  fitBounds(lng1 = belgium_bbox$xmin, lat1 = belgium_bbox$ymin, 
+            lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax)  
+
+
+```

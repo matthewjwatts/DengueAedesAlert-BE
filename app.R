@@ -5,6 +5,7 @@ library(leaflet.providers)
 library(DT)
 library(sf)
 library(shinyalert)
+library(tidyverse)
 
 # Global variables to store the data frames
 if (!exists("aedes_data")) {
@@ -30,10 +31,6 @@ if (!exists("dengue_data")) {
     stringsAsFactors = FALSE
   )
 }
-
-
-
-
 
 
 # Check if postaldistricts exists, if not, load it
@@ -89,11 +86,80 @@ server <- function(input, output, session) {
   file_data <- reactiveVal(NULL)
   show_verification <- reactiveVal(FALSE)
     
-
+  
+  # Reactive expression to calculate start_date based on slider input
+  start_date <- reactive({
+    #current_date <- Sys.Date()
+    current_date <- '2023-08-28'
+    current_date <- as.Date(current_date, format = "%Y-%m-%d")  # Removed the extra closing parenthesis
+      - (input$weeks_before * 7)
+  })
+  
+  # Reactive expression to filter aedes_data based on current year
+  aedes_data_filtered <- reactive({
+    #current_year <- format(Sys.Date(), "%Y")
+    current_year <- 2023
+    aedes_data %>%
+      mutate(Detection_date = as.Date(Detection_date, format = "%Y-%m-%d")) %>%
+      filter(format(Detection_date, "%Y") == current_year) %>%
+      dplyr::select(Postcode, Municipality)
+  })
+  
+  # Reactive expression to filter dengue_data based on start_date
+  dengue_data_filtered <- reactive({
+    #current_date <- Sys.Date()
+    current_date <- '2023-08-28'
+    current_date <- as.Date(current_date, format = "%Y-%m-%d")  # Removed the extra closing parenthesis
+    dengue_data %>%
+      mutate(Report_date = as.Date(Report_date, format = "%Y-%m-%d")) %>%
+      filter(Report_date >= start_date() & Report_date <= current_date)
+  })
+  
+  # Reactive expression to join and create sf object
+  aedes_dengue_matches <- reactive({
+    aedes_data_sf <- dplyr::inner_join(postaldistricts, aedes_data_filtered(), by = 'Postcode')
+    aedes_dengue_matches <- dplyr::inner_join(aedes_data_sf, dengue_data_filtered(), by = 'Postcode')
+    
+    # Convert to sf object
+    aedes_dengue_matches <- st_as_sf(aedes_dengue_matches)
+    
+    # Ensure the data is in the correct CRS for Leaflet
+    aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
+    
+    return(aedes_dengue_matches)
+  })
+  
+  # Reactive expression to calculate the number of cases per postcode
+  aedes_dengue_matches_count <- reactive({
+    aedes_dengue_matches() %>%
+      group_by(Postcode, Municipality) %>%
+      summarize(case_count = n(), .groups = 'drop')
+  })
+  
+  # Render the leaflet map
+  output$realtime_map <- renderLeaflet({
+    # Define the bounding box for Belgium
+    belgium_bbox <- list(
+      xmin = 2.524,  # Westernmost longitude
+      ymin = 49.496, # Southernmost latitude
+      xmax = 6.408,  # Easternmost longitude
+      ymax = 51.505  # Northernmost latitude
+    )
+    
+    # Create the leaflet map
+    leaflet(data = aedes_dengue_matches_count()) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(color = "red", weight = 2, fillOpacity = 0.5, 
+                  popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode, 
+                                 "; N.cases: ", case_count)) %>%
+      fitBounds(lng1 = belgium_bbox$xmin, lat1 = belgium_bbox$ymin, 
+                lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax)
+  })
   
   
   observeEvent(input$file1, {
     req(input$file1)  # Ensure a file is uploaded
+    
     
     # Clear previous messages
     output$message <- renderText(NULL)
@@ -188,6 +254,9 @@ server <- function(input, output, session) {
     output$data_table <- renderDT(uploaded_file)
     show_verification(TRUE)
   })
+  
+  
+  
   
   observeEvent(input$confirm_upload, {
     req(file_data())

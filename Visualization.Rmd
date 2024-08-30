@@ -9,142 +9,76 @@
 
 
 
-
+#current_year <- 2023
 ```{r}
 
-#install.packages("dplyr")
-#install.packages("leaflet") 
-
-library(dplyr)
+library(tidyverse)
 library(leaflet)
+library(sf)
 
 # Convert 'Detection_date' to Date format if it's not already
 aedes_data <- aedes_data %>%
   mutate(Detection_date = as.Date(Detection_date, format = "%Y-%m-%d")) # Adjust the format as needed
 
 # Assuming 'Detection_date' is in Date format
-#current_year <- format(Sys.Date(), "%Y")
-current_year <- 2023
+current_year <- format(Sys.Date(), "%Y")
 
 # Filter the data for the current year
 aedes_data_filtered <- aedes_data %>%
   filter(format(Detection_date, "%Y") == current_year)
 
+aedes_data_filtered <- dplyr::select(aedes_data_filtered, Postcode, Municipality)
 
-```
+aedes_data_filtered <-  dplyr::inner_join(postaldistricts, aedes_data_filtered, by = 'Postcode')
 
-
-```{r}
 
 # Convert 'Report_date' to Date format if it's not already
 dengue_data <- dengue_data %>%
   mutate(Report_date = as.Date(Report_date, format = "%Y-%m-%d"))  # Adjust the format if necessary
 
-```
-
-
-```{r}
-
 # Get the current date
-current_date <- '2023-08-28'
+#current_date <- '2023-08-28'
+
+# Assuming 'Detection_date' is in Date format
+current_date <- format(Sys.Date(), "%Y-%m-%d")
+
 current_date <- as.Date(current_date, format = "%Y-%m-%d")  # Removed the extra closing parenthesis
 
-# Calculate the date 7 days before the current date
-start_date <- current_date - 96
+# Calculate the date 7, 14, 21, or 28 days before the current date, this should use the slider
+start_date <- current_date - 7
 
 # Filter the data to include only the last 7 days
 dengue_data_filtered <- dengue_data %>%
   filter(Report_date >= start_date & Report_date <= current_date)
 
+aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
 
-```
+# Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
+aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
 
+# Calculate the number of cases per postcode
+aedes_dengue_matches_count <- aedes_dengue_matches %>%
+  group_by(Postcode, Municipality) %>%
+  summarize(case_count = n(), .groups = 'drop')
 
-
-```{r}
-
-
-
-```
-
-
-
-```{r}
-
-
-######################################################################################
-# Identification of overlaps 2023: Dengue infections and 2023 Aedes 2023 detections
-#######################################################################################
-
-# Counting observations per year
-yearly_postcode_dengue_counts <- DENV_Belgium %>%
-  group_by(dengue_year, Postcode) %>%
-  summarise(count = n()) %>%
-  ungroup()
-
-# first select year of dengue introduction
-# Next query this against the aedes data set, it should only select the current years and up to 4 years before. results should be displayed in a map and table. 
-
-
-# Define the target year
-target_year <- 2023
-
-
-yearly_postcode_dengue_counts$dengue_year <- as.numeric(yearly_postcode_dengue_counts$dengue_year)
-
-
-denv_aedes_matches <- yearly_postcode_dengue_counts %>%
-  filter(dengue_year == target_year) %>%
-  inner_join(long_aedes_data, by = c("Postcode" = "Postcode", "dengue_year" = "year")) %>%
-  filter(detection == 1)  
-  
-
-# note needs to be alert if cases not matched
-denv_aedes_matched_cases_shp <- dplyr::right_join(belgium_shp, denv_aedes_matches, by = "Postcode") 
-  
-
-
-# Load necessary libraries
-library(sf)
-library(leaflet)
-
-# Read your data into an SF object
-# Replace 'your_data_file' with your actual data file path
-# Example assuming your data is in a shapefile
-
-
-
-
-# Create the bins
-denv_aedes_matched_cases_shp$bins <- cut(denv_aedes_matched_cases_shp$count, breaks = c(0, 2,  5, 10, 20, 30, 50, Inf), 
-                        labels = c("1-2", "3-5", "6-10", "11-20", "21-30", "31-50", ">50"), right = FALSE)
-
-# Create a color palette based on the bins
-pal <- colorFactor(palette = "YlOrRd", domain = denv_aedes_matched_cases_shp$bins)
+# Define the bounding box for Belgium manually
+belgium_bbox <- list(
+  xmin = 2.524,  # Westernmost longitude
+  ymin = 49.496, # Southernmost latitude
+  xmax = 6.408,  # Easternmost longitude
+  ymax = 51.505  # Northernmost latitude
+)
 
 # Create the leaflet map
-map <- leaflet(denv_aedes_matched_cases_shp) %>%
+leaflet(data = aedes_dengue_matches_count) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
-  addPolygons(
-    fillColor = ~pal(bins),
-    fillOpacity = 0.7,
-    color = "#BDBDC3",
-    weight = 1,
-    popup = ~paste("Municipality: ", namedut,  "; Post Code:", Postcode,  "; Dengue Cases 2013:", count)
-  ) %>%
-  addLegend(
-    pal = pal,
-    values = ~bins,
-    opacity = 0.7,
-    title = "Dengue Cases",
-    position = "bottomright"
-  )
-
-# Print the map
-map
-
-
+  addPolygons(color = "red", weight = 2, fillOpacity = 0.5, 
+              popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode, 
+                             "; N.cases: ", case_count)) %>%  # Plot polygons in red
+  fitBounds(lng1 = belgium_bbox$xmin, lat1 = belgium_bbox$ymin, 
+            lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax)
 
 
 ```
+
 
