@@ -9,7 +9,13 @@
 
 
 
-#current_year <- 2023
+
+
+- Combine data sets one of matches and one of no matches to look at distribution 
+- report only matches in dataframe report
+
+
+
 ```{r}
 
 library(tidyverse)
@@ -21,7 +27,9 @@ aedes_data <- aedes_data %>%
   mutate(Detection_date = as.Date(Detection_date, format = "%Y-%m-%d")) # Adjust the format as needed
 
 # Assuming 'Detection_date' is in Date format
-current_year <- format(Sys.Date(), "%Y")
+#current_year <- format(Sys.Date(), "%Y")
+
+current_year <- 2023
 
 # Filter the data for the current year
 aedes_data_filtered <- aedes_data %>%
@@ -31,27 +39,43 @@ aedes_data_filtered <- dplyr::select(aedes_data_filtered, Postcode, Municipality
 
 aedes_data_filtered <-  dplyr::inner_join(postaldistricts, aedes_data_filtered, by = 'Postcode')
 
+```
+
+
+```{r}
+
 
 # Convert 'Report_date' to Date format if it's not already
 dengue_data <- dengue_data %>%
   mutate(Report_date = as.Date(Report_date, format = "%Y-%m-%d"))  # Adjust the format if necessary
 
 # Get the current date
-#current_date <- '2023-08-28'
+current_date <- '2023-08-28'
 
 # Assuming 'Detection_date' is in Date format
-current_date <- format(Sys.Date(), "%Y-%m-%d")
+#current_date <- format(Sys.Date(), "%Y-%m-%d")
 
 current_date <- as.Date(current_date, format = "%Y-%m-%d")  # Removed the extra closing parenthesis
 
 # Calculate the date 7, 14, 21, or 28 days before the current date, this should use the slider
-start_date <- current_date - 7
+start_date <- current_date - 90
 
 # Filter the data to include only the last 7 days
 dengue_data_filtered <- dengue_data %>%
   filter(Report_date >= start_date & Report_date <= current_date)
 
+```
+
+
+
+```{r}
+# create grey red
 aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+aedes_non_matches <-  dplyr::left_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+
+# create grey red
+dengue_matches <-  dplyr::right_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+dengue_non_matches <-  dplyr::right_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
 
 # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
 aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
