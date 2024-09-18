@@ -1,3 +1,5 @@
+
+
 1.	Real time function (for 2024)
   a.	Mosquito information (colouring a postal code):
     i.	2024 – information on a cumulative basis over 2024
@@ -6,9 +8,6 @@
     i.	Cases of the last week: with the mark of a red star (for example)
     ii.	Cases per month of 2024: to work with a different colour per month and with different size depending on number of cases for that month in that postal code
   c.	Overlap : alert function when a case in the current week is detected in a postal code where the mosquito was detected in 2024
-
-
-
 
 
 - Combine data sets one of matches and one of no matches to look at distribution 
@@ -46,6 +45,7 @@ aedes_data_filtered <-  dplyr::inner_join(postaldistricts, aedes_data_filtered, 
 
 
 # Convert 'Report_date' to Date format if it's not already
+
 dengue_data <- dengue_data %>%
   mutate(Report_date = as.Date(Report_date, format = "%Y-%m-%d"))  # Adjust the format if necessary
 
@@ -69,13 +69,24 @@ dengue_data_filtered <- dengue_data %>%
 
 
 ```{r}
-# create grey red
-aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
-aedes_non_matches <-  dplyr::left_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
 
 # create grey red
-dengue_matches <-  dplyr::right_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
-dengue_non_matches <-  dplyr::right_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+
+
+
+aedes_dengue_non_matches <-  dplyr::anti_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
+
+
+# create grey red
+dengue_cases <-  dengue_data_filtered
+dengue_cases <-  dplyr::inner_join(postaldistricts, dengue_data_filtered, by = 'Postcode')
+
+
+# Convert polygon to point using point on surface
+dengue_cases <- st_centroid(dengue_cases)
+
+
 
 # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
 aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
@@ -93,15 +104,56 @@ belgium_bbox <- list(
   ymax = 51.505  # Northernmost latitude
 )
 
+```
+
+```{r}
+
+custom_icons <- icons(
+  iconUrl = "www/icons/68004_location_pin_icon.png",  # Use your image URL
+  iconWidth = 10,  # Width of the icon
+  iconHeight = 10,  # Height of the icon
+)
+
 # Create the leaflet map
-leaflet(data = aedes_dengue_matches_count) %>%
+leaflet() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
-  addPolygons(color = "red", weight = 2, fillOpacity = 0.5, 
+  
+  # Add polygons with matching cases
+  addPolygons(data = aedes_dengue_matches_count, 
+              color = "red", weight = 2, fillOpacity = 0.5, 
+              group = "Matches",   # Add group for legend
               popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode, 
                              "; N.cases: ", case_count)) %>%  # Plot polygons in red
+                             
+  # Add polygons without matching cases
+  addPolygons(data = aedes_dengue_non_matches, 
+              color = "grey", weight = 2, fillOpacity = 0.5, 
+              group = "No-overlap",   # Add group for legend
+              popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode)) %>%  # Plot polygons in grey
+  
+  # Fit the bounds to your region (Belgium)
   fitBounds(lng1 = belgium_bbox$xmin, lat1 = belgium_bbox$ymin, 
-            lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax)
+            lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax) %>%
+  
+  addMarkers(data = dengue_cases, icon = custom_icons) %>%
 
+  
+  # Add legend to distinguish between the two categories of polygons
+  addLegend(position = "bottomright", 
+            colors = c("red", "grey"),   # Colors for the legend
+            labels = c("Overlap-with Dengue", "No-overlap Dengue"),  # Corresponding labels
+            title = "Aedes positive postcodes",
+            opacity = 0.5)  %>%
+
+# Add a second custom legend for the marker icons
+  addControl(html = "
+     <div style='background: white; padding: 10px;'>
+       <div style='display: flex; align-items: center;'>
+          <img src='icons/68004_location_pin_icon.png' width='25' height='41' style='margin-right: 5px;'> 
+         Dengue Cases
+       </div>
+     </div>", 
+     position = "bottomleft")
 
 ```
 
