@@ -51,3 +51,7 @@ List of post codes: <https://www.geo.be/catalog/details/9738c7c0-5255-11ea-8895-
 Country names: It could be useful to start tracking regional information, consider using this naming convention
 
 <https://unstats.un.org/unsd/methodology/m49/>
+
+## Nomenclature of Belgium admin units
+There is a discrepancy between using postcodes (
+BE.BPOST dataset) and municipalitie, therefore i have 

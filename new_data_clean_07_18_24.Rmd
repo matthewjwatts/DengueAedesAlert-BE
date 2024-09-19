@@ -18,6 +18,64 @@ belgium_shp <- st_read("data/postaldistricts.shp")
 
 ```
 
+
+```{r}
+
+# load up different scales of data to create different spatial levels
+
+municipality <- st_read("data/arrondissement_4326.shp") 
+
+# Ensure both datasets have the same CRS
+crs_municipality <- st_crs(postaldistricts)
+
+# Assuming 'municipality' is your sf object with polygons
+municipality <- st_zm(municipality)
+
+# Calculate centroids of the polygons
+post_code_centroids <- st_centroid(postaldistricts)
+
+
+ggplot() +
+  geom_sf(data = municipality, fill = "lightblue", color = "darkblue") +  # Draw polygons
+  geom_sf(data = post_code_centroids, color = "red", size = .1)  # Draw points
+
+
+library(sf)
+
+# Perform the spatial join
+joined_data <- st_join(municipality, post_code_centroids, join = st_intersects)
+
+
+duplicate_rows <- joined_data  %>%
+  group_by(Postcode) %>%  # Group by the column of interest
+  filter(n() > 1) %>%        # Keep groups with more than one row
+  ungroup()   
+
+
+# View the first few rows of the joined data
+head(joined_data)
+
+# Drop the geometry and create a new non-spatial dataframe
+municipality_post_code_link <- st_drop_geometry(joined_data)
+
+municipality_post_code_link <- dplyr::select(municipality_post_code_link, niscode,  nameger,    namefre,    namedut,    Postcode)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```{r}
 
 Ae_albopictus_distribution <- read_excel("data/Ae_albopictus_2018_2023.xlsx")

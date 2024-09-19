@@ -43,7 +43,6 @@ aedes_data_filtered <-  dplyr::inner_join(postaldistricts, aedes_data_filtered, 
 
 ```{r}
 
-
 # Convert 'Report_date' to Date format if it's not already
 
 dengue_data <- dengue_data %>%
@@ -73,20 +72,21 @@ dengue_data_filtered <- dengue_data %>%
 # create grey red
 aedes_dengue_matches <-  dplyr::inner_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
 
-
-
 aedes_dengue_non_matches <-  dplyr::anti_join(aedes_data_filtered,dengue_data_filtered,  by = 'Postcode')
-
 
 # create grey red
 dengue_cases <-  dengue_data_filtered
-dengue_cases <-  dplyr::inner_join(postaldistricts, dengue_data_filtered, by = 'Postcode')
 
+# Calculate the number of cases per postcode
+dengue_case_count <- dengue_cases %>%
+  group_by(Postcode) %>%
+  summarize(case_count = n(), .groups = 'drop')
+
+
+dengue_case_count <-  dplyr::inner_join(postaldistricts, dengue_case_count, by = 'Postcode')
 
 # Convert polygon to point using point on surface
-dengue_cases <- st_centroid(dengue_cases)
-
-
+dengue_case_count <- st_centroid(dengue_case_count)
 
 # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
 aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
@@ -135,7 +135,7 @@ leaflet() %>%
   fitBounds(lng1 = belgium_bbox$xmin, lat1 = belgium_bbox$ymin, 
             lng2 = belgium_bbox$xmax, lat2 = belgium_bbox$ymax) %>%
   
-  addMarkers(data = dengue_cases, icon = custom_icons) %>%
+  addMarkers(data = dengue_case_count, icon = custom_icons, popup = ~paste("Post Code: ", Postcode, "; N.cases: ", case_count)) %>%
 
   
   # Add legend to distinguish between the two categories of polygons
