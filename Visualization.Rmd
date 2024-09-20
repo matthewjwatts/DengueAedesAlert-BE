@@ -91,10 +91,6 @@ dengue_case_count <- st_centroid(dengue_case_count)
 # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
 aedes_dengue_matches <- st_transform(aedes_dengue_matches, crs = 4326)  # WGS 84
 
-# Calculate the number of cases per postcode
-aedes_dengue_matches_count <- aedes_dengue_matches %>%
-  group_by(Postcode, Municipality) %>%
-  summarize(case_count = n(), .groups = 'drop')
 
 # Define the bounding box for Belgium manually
 belgium_bbox <- list(

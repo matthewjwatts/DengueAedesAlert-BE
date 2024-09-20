@@ -214,4 +214,10 @@ write.csv(filtered_DENV_Belgium, 'data/clean_dengue_data.csv', row.names = FALSE
 
 ```
 
-
+  # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
+  aedes_dengue_matches <- reactive({st_transform(aedes_dengue_matches, crs = 4326)})
+  # WGS 84
+  
+  # Ensure the data is in the correct CRS (Coordinate Reference System) for Leaflet
+  aedes_dengue_non_matches <- reactive({st_transform(a  aedes_dengue_non_matches, crs = 4326)})
+  # WGS 84
