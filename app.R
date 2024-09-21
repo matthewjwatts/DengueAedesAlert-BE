@@ -119,6 +119,18 @@ server <- function(input, output, session) {
     inner_join(aedes_data_filtered(), dengue_data_filtered(), by = 'Postcode')
   })
   
+  # Reactive expression to join the filtered dataframes
+  aedes_dengue_non_matches <- reactive({
+    anti_join(aedes_data_filtered(), dengue_data_filtered(), by = 'Postcode')
+  })
+  
+  # Reactive expression to create an SF object for plotting
+  aedes_sf <- reactive({
+    # Join the matches with postaldistricts to get spatial geometry
+    sf_data <- inner_join(postaldistricts, aedes_dengue_non_matches(), by = 'Postcode')
+    return(sf_data)
+  })
+  
   
   # Reactive expression to create an SF object for plotting
   aedes_dengue_sf <- reactive({
@@ -127,7 +139,27 @@ server <- function(input, output, session) {
     return(sf_data)
   })
   
+  
+  # Calculate the number of cases per postcode
+  dengue_case_count <- reactive({dengue_data_filtered() %>%
+    group_by(Postcode) %>%
+    summarize(case_count = n(), .groups = 'drop')})
+  
+  
+  dengue_case_count <-  reactive({
+    # Join the matches with postaldistricts to get spatial geometry
+    sf_data <- inner_join(postaldistricts, dengue_case_count(), by = 'Postcode')
+    return(sf_data)
+  })
+  
+  # Convert polygon to point using point on surface
+  dengue_case_count_centroids <- reactive({
+    sf_centroids <- st_centroid(dengue_case_count())
+    return(sf_centroids)})
+  
+  
   # Render the Leaflet map
+  
   output$realtime_map <- renderLeaflet({
     req(aedes_dengue_sf())
     
