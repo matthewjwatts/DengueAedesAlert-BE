@@ -100,9 +100,6 @@ belgium_bbox <- list(
   ymax = 51.505  # Northernmost latitude
 )
 
-```
-
-```{r}
 
 custom_icons <- icons(
   iconUrl = "www/icons/68004_location_pin_icon.png",  # Use your image URL

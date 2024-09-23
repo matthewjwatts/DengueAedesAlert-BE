@@ -6,6 +6,8 @@ library(DT)
 library(sf)
 library(shinyalert)
 library(tidyverse)
+library(leaflet.extras)
+
 
 # Global variables to store the data frames
 if (!exists("aedes_data")) {
@@ -60,12 +62,14 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = "RealtimeRisk",
               h1("Realtime risk locations"),
+              h3(textOutput("current_date_display")),
               # Place the slider input in the main page content
               sliderInput("weeks_before", 
                           "Select weeks before current date:",
                           min = 1, max = 4, value = 1, step = 1),
-              DTOutput("aedes_dengue_table"),  # Remove the comma here
-              leafletOutput("realtime_map", height = "600px")  # Add this line
+              leafletOutput("realtime_map", height = "600px"),
+              DTOutput("aedes_dengue_table")  # Remove the comma here
+                # Add this line
       ),  # Add the closing parenthesis for the tabItem
       tabItem(tabName = "HistoricalRisk",
               h1("Historical risk locations")),
@@ -92,6 +96,11 @@ server <- function(input, output, session) {
   current_date <- reactive({
     current_date <- '2023-12-28'
     as.Date(current_date, format = "%Y-%m-%d")
+  })
+  
+  # Render the current date for display
+  output$current_date_display <- renderText({
+    paste("Date today:", current_date())
   })
   
   # Reactive expression to calculate start_date based on slider input
@@ -124,7 +133,7 @@ server <- function(input, output, session) {
     anti_join(aedes_data_filtered(), dengue_data_filtered(), by = 'Postcode')
   })
   
-  # Reactive expression to create an SF object for plotting
+  # plot aedes postive sites with no overlap - Reactive expression to create an SF object for plotting
   aedes_sf <- reactive({
     # Join the matches with postaldistricts to get spatial geometry
     sf_data <- inner_join(postaldistricts, aedes_dengue_non_matches(), by = 'Postcode')
@@ -132,7 +141,7 @@ server <- function(input, output, session) {
   })
   
   
-  # Reactive expression to create an SF object for plotting
+  # plot aedes postive sites Reactive expression to create an SF object for plotting
   aedes_dengue_sf <- reactive({
     # Join the matches with postaldistricts to get spatial geometry
     sf_data <- inner_join(postaldistricts, aedes_dengue_matches(), by = 'Postcode')
@@ -146,7 +155,7 @@ server <- function(input, output, session) {
     summarize(case_count = n(), .groups = 'drop')})
   
   
-  dengue_case_count <-  reactive({
+  dengue_case_counts <-  reactive({
     # Join the matches with postaldistricts to get spatial geometry
     sf_data <- inner_join(postaldistricts, dengue_case_count(), by = 'Postcode')
     return(sf_data)
@@ -154,40 +163,104 @@ server <- function(input, output, session) {
   
   # Convert polygon to point using point on surface
   dengue_case_count_centroids <- reactive({
-    sf_centroids <- st_centroid(dengue_case_count())
+    sf_centroids <- st_centroid(dengue_case_counts())
     return(sf_centroids)})
   
   
   # Render the Leaflet map
-  
   output$realtime_map <- renderLeaflet({
-    req(aedes_dengue_sf())
+    req(aedes_dengue_sf(), aedes_sf(), dengue_case_count_centroids())
     
-    leaflet(data = aedes_dengue_sf()) %>%
+    # Define the initial view parameters
+    initial_lat <- 50.50   # Latitude of the center of Belgium
+    initial_lng <- 4.35    # Longitude of the center of Belgium
+    initial_zoom <- 7.5      # Appropriate zoom level for Belgium
+    
+    custom_icons <- icons(
+      iconUrl = "www/icons/68004_location_pin_icon.png",  # Use your image URL
+      iconWidth = 10,  # Width of the icon
+      iconHeight = 10  # Height of the icon
+    )
+    
+    leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
+      
+      # Add polygons with matching cases
       addPolygons(
-        fillColor = "red",
-        weight = 1,
-        opacity = 1,
-        color = "white",
-        dashArray = "3",
-        fillOpacity = 0.7,
-        highlightOptions = highlightOptions(
-          weight = 2,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = ~paste("Postcode:", Postcode)
+        data = aedes_dengue_sf(), 
+        color = "red", weight = 2, fillOpacity = 0.5, 
+        group = "Matches",
+        popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode)
+      ) %>%
+      
+      # Add polygons without matching cases
+      addPolygons(
+        data = aedes_sf(), 
+        color = "grey", weight = 2, fillOpacity = 0.5, 
+        group = "No-overlap",
+        popup = ~paste("Municipality: ", Municipality, "; Post Code: ", Postcode)
+      ) %>%
+      
+      # Set the initial view
+      setView(lng = initial_lng, lat = initial_lat, zoom = initial_zoom) %>%
+      
+      addMarkers(
+        data = dengue_case_count_centroids(), 
+        icon = custom_icons, 
+        popup = ~paste("Post Code: ", Postcode, "; N.cases: ", case_count)
+      ) %>%
+      
+      # Add legend to distinguish between the two categories of polygons
+      addLegend(
+        position = "bottomright", 
+        colors = c("red", "grey"),   # Colors for the legend
+        labels = c("Overlap with dengue case/s", "No-overlap with dengue case/s"),  # Corresponding labels
+        title = "Aedes positive postcodes",
+        opacity = 0.5
+      ) %>%
+      
+      # Add a second custom legend for the marker icons
+      addControl(
+        html = "
+        <div style='background: white; padding: 10px;'>
+          <div style='display: flex; align-items: center;'>
+            <img src='icons/68004_location_pin_icon.png' width='25' height='25' style='margin-right: 5px;'> 
+            Dengue Cases
+          </div>
+        </div>", 
+        position = "bottomleft"
+      ) %>%   # Added the missing %>% here
+      
+      # Add the reset zoom button
+      addEasyButton(easyButton(
+        icon = "fa-globe", title = "Reset View",
+        onClick = JS(paste0("function(btn, map){ map.setView([", initial_lat, ", ", initial_lng, "], ", initial_zoom, "); }"))
+      ))
+  })
+  
+
+  # Reactive expression to filter and rename columns
+  aedes_dengue_matches_table <- reactive({
+    aedes_dengue_matches() %>%
+      dplyr::select(-Latitude, -Longitude, -Observation_ID) %>%
+      dplyr::rename(
+        Aedes_site_codes = Site_codes, 
+        Aedes_site_type = Site_type, 
+        Aedes_detection_date = Detection_date,
+        Denv_case_sample_ID = Sample_ID, 
+        Denv_case_report_date = Report_date,
+        Denv_case_source_country = Source_country
       )
   })
   
   # Render the aedes_dengue_matches dataframe in the DTOutput
   output$aedes_dengue_table <- renderDT({
-    req(aedes_dengue_matches())
-    aedes_dengue_matches()
+    req(aedes_dengue_matches_table())  # Make sure the reactive expression is evaluated inside a reactive context
+    datatable(
+      aedes_dengue_matches_table(),
+      options = list(pageLength = 50)
+    )
   })
-  
 
   
 
