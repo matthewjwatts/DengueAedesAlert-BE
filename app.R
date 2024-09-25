@@ -7,6 +7,11 @@ library(sf)
 library(shinyalert)
 library(tidyverse)
 library(leaflet.extras)
+library(markdown)
+
+#################################################################################################################
+# Ensure data / data frames are created / loaded if not in environment
+#################################################################################################################
 
 
 # Global variables to store the data frames
@@ -45,21 +50,32 @@ if (!exists("valid_postcodes")) {
   valid_postcodes <<-  unique(postaldistricts$Postcode)
 }
 
-
+#################################################################################################################
+# Web layout etc
+#################################################################################################################
 
 
 ui <- dashboardPage(
-  dashboardHeader(title = "Dengue Risk Belgium"),
+  dashboardHeader(title = "DENVAedes-Alert-BE"),
   dashboardSidebar(
     sidebarMenu(
+      menuItem("About", tabName = "About"),
       menuItem("Realtime risk", tabName = "RealtimeRisk"),
       menuItem("Historical risk", tabName = "HistoricalRisk"),
+      menuItem("Cumulative dengue cases 5y", tabName = "CumulativeDengue"),
+      menuItem("Cumulative Aedes Positive Years", tabName = "CumulativeAedes"),  # New tab for Aedes data
       menuItem("Data management", tabName = "DataManagement")
     )
   ),
   dashboardBody(
     useShinyalert(),
     tabItems(
+      tabItem(tabName = "About",
+              tags$head(
+                tags$link(rel = "stylesheet", type = "text/css", href = "github-markdown.css")
+              ),
+              div(class = "markdown-body", includeMarkdown("README.md"))
+      ),
       tabItem(tabName = "RealtimeRisk",
               h1("Realtime Risk Analysis"),
               br(),
@@ -99,6 +115,20 @@ ui <- dashboardPage(
               br(),
               DTOutput("historical_aedes_dengue_table")
       ),
+      tabItem(tabName = "CumulativeDengue",
+              h1("Cumulative Dengue Cases Over the Last 5 Years"),
+              leafletOutput("cumulative_dengue_map", height = "600px"),
+              br(),
+              h2("Dengue Cases Summary Table"),
+              DTOutput("cumulative_dengue_table")
+      ), 
+      tabItem(tabName = "CumulativeAedes",  # New tab content for Aedes data
+              h1("Cumulative Aedes Positive Years (Last 5 Years)"),
+              leafletOutput("cumulative_aedes_map", height = "600px"),  # Leaflet map output
+              br(),
+              h2("Aedes Positive Years Summary Table"),
+              DTOutput("cumulative_aedes_table")  # Data table output
+      ),
       tabItem(tabName = "DataManagement",
               h1("Upload data"),
               selectInput("dataset_select", "Select Dataset to Upload:",
@@ -115,9 +145,18 @@ ui <- dashboardPage(
   )
 )
 
+#################################################################################################################
+# Back-end (server) functions
+#################################################################################################################
+
 
 server <- function(input, output, session) {
 
+  
+  #################################################################################################################
+  # Check if data exists functions 
+  #################################################################################################################
+  
   
   file_data <- reactiveVal(NULL)
   show_verification <- reactiveVal(FALSE)
@@ -176,6 +215,11 @@ server <- function(input, output, session) {
       )
     }
   })
+  
+  
+  #################################################################################################################
+  # Real-time Risk (overlaps) functions
+  #################################################################################################################
   
   
   current_date <- reactive({
@@ -416,9 +460,10 @@ server <- function(input, output, session) {
   })
   
   
+  #################################################################################################################
+  # Historical overlaps function
+  #################################################################################################################
   
-  
-
   
   
   # plot aedes postive sites with no overlap - Reactive expression to create an SF object for plotting
@@ -547,6 +592,239 @@ server <- function(input, output, session) {
     )
   })
   
+  
+  #################################################################################################################
+  # Cumulative dengue cases over the last 5 years: - working with gradation of colours to indicate number of cases
+  #################################################################################################################
+  
+  # Define a reactive expression to calculate cumulative dengue cases
+  postcode_dengue_counts_5y <- reactive({
+    # Define the target year as the current year
+    target_year <- as.numeric(format(Sys.Date(), "%Y"))
+    
+    # Calculate the range of years
+    start_year <- target_year - 4  # Last 5 years including the target year
+    
+    # Convert the 'Report_date' column to Date format
+    dengue_data_cleaned <- data_values$dengue_data %>%
+      mutate(Report_date = as.Date(Report_date, format = "%Y-%m-%d")) %>%
+      filter(!is.na(Report_date)) # Remove NA dates
+    
+    # Filter dengue data for the last 5 years
+    dengue_data_5y <- dengue_data_cleaned %>%
+      mutate(dengue_year = as.numeric(format(Report_date, "%Y"))) %>%
+      filter(dengue_year >= start_year & dengue_year <= target_year)
+    
+    # Counting observations per postcode over the last 5 years
+    postcode_dengue_counts_5y <- dengue_data_5y %>%
+      group_by(Postcode) %>%
+      summarise(count = n()) %>%
+      ungroup()
+    
+    # Create bins for categorizing dengue counts
+    postcode_dengue_counts_5y$bins <- 
+      cut(postcode_dengue_counts_5y$count,
+          breaks = c(0, 2, 5, 10, 20, 30, 50, Inf),
+          labels = c("1-2", "3-5", "6-10", "11-20", "21-30", "31-50", ">50"),
+          right = FALSE)
+    
+    return(postcode_dengue_counts_5y)
+  })
+  
+  # Reactive expression to join the cumulative counts with the postal district geometries
+  postcode_dengue_counts_5y_sf <- reactive({
+    # Join with spatial data (postaldistricts) to get the geometry for mapping
+    sf_data <- inner_join(postaldistricts, postcode_dengue_counts_5y(), by = 'Postcode')
+    return(sf_data)
+  })
+  
+  # Create a color palette based on the bins within the reactive context
+  output$cumulative_dengue_map <- renderLeaflet({
+    # Access the reactive data within the renderLeaflet context
+    sf_data <- postcode_dengue_counts_5y_sf()
+    
+    # Check if the data is available
+    req(nrow(sf_data) > 0)
+    
+    # Create a color palette based on the bins
+    pal <- colorFactor(palette = "YlOrRd", domain = sf_data$bins)
+    
+    # Create and render the leaflet map for cumulative dengue cases over the last 5 years
+    leaflet(sf_data) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(
+        fillColor = ~pal(bins),
+        fillOpacity = 0.7,
+        color = "#BDBDC3",
+        weight = 1,
+        popup = ~paste("Post Code:", Postcode, "; Dengue Cases (5Yr):", count)
+      ) %>%
+      addLegend(
+        pal = pal,
+        values = ~bins,
+        opacity = 0.7,
+        title = "Dengue Cases (Last 5 Years)",
+        position = "bottomright"
+      ) %>%
+      addEasyButton(easyButton(
+        icon = "fa-globe", title = "Reset View",
+        onClick = JS(paste0("function(btn, map){ map.setView([", 50.50, ", ", 4.35, "], ", 7.5, "); }"))
+      ))
+  })
+  
+  # Show the data table for the cumulative dengue cases
+  output$cumulative_dengue_table <- renderDT({
+    # Access the reactive data within the renderDT context
+    sf_data <- postcode_dengue_counts_5y() # Correct reactive value
+    
+    # Check if the data is available
+    req(nrow(sf_data) > 0)
+    
+    # Render the datatable
+    datatable(
+      sf_data %>%
+        dplyr::select(Postcode, count) %>%
+        dplyr::rename(
+          "Post Code" = Postcode,
+          "Dengue Cases (Last 5 Yr)" = count
+        ),
+      options = list(pageLength = 50)
+    )
+  })
+  
+
+  
+  #######################################################################################################################
+  # Cumulative Aedes Data over the last 5 years: - counting the total number of observations a postcode was positive 
+  # Note since a whole 5y will be possible, it include 5 years back from current date not inlcuding current year, however current year will be included
+  ########################################################################################################################
+  
+  # Reactive expression to calculate cumulative Aedes data over the last 5 years
+  postcode_aedes_positive_5y <- reactive({
+    # Define the target year as the current year
+    target_year <- as.numeric(format(Sys.Date(), "%Y"))
+    
+    # Calculate the range of years
+    start_year <- target_year - 5  # Last 5 years including the target year
+    
+    # Convert the 'Detection_date' column to Date format
+    aedes_data_cleaned <- data_values$aedes_data %>%
+      mutate(Detection_date = as.Date(Detection_date, format = "%Y-%m-%d")) %>%
+      filter(!is.na(Detection_date)) # Remove NA dates
+    
+    # Filter Aedes data for the last 5 years
+    aedes_data_5y <- aedes_data_cleaned %>%
+      mutate(aedes_year = as.numeric(format(Detection_date, "%Y"))) %>%
+      filter(aedes_year >= start_year & aedes_year <= target_year)
+    
+    
+    # Sum all observations over the last 5 years for each postcode
+    positive_aedes_counts_5y <-  aedes_data_5y %>%
+      group_by(Postcode, Municipality) %>%
+      summarise(total_count = n(), .groups = 'drop')
+    
+    return(positive_aedes_counts_5y)
+  })
+  
+  # Reactive expression to join the total count with the postal district geometries
+  postcode_aedes_positive_5y_sf <- reactive({
+    # Join with spatial data (postaldistricts) to get the geometry for mapping
+    sf_data <- inner_join(postaldistricts, postcode_aedes_positive_5y(), by = 'Postcode')
+    # Replace NA values in total_count with 0 (if needed)
+    sf_data$total_count[is.na(sf_data$total_count)] <- 0
+    return(sf_data)
+  })
+  
+  # Create a color palette based on the total number of observations
+  output$cumulative_aedes_map <- renderLeaflet({
+    # Access the reactive data within the renderLeaflet context
+    sf_data <- postcode_aedes_positive_5y_sf()
+    
+    # Check if the data is available
+    req(nrow(sf_data) > 0)
+    
+    # Define color palette from yellow to red based on total observations
+    color_palette <- colorNumeric(
+      palette = c("yellow", "#ff0000"),  # Light yellow to red
+      domain = c(1, 5)  # Adjust domain based on max observations
+    )
+    
+    #Custom labels for the legend
+    legend_labels <- c("1", "2", "3", "4", "5")
+    
+    
+    # Create and render the leaflet map for cumulative Aedes data over the last 5 years
+    leaflet(sf_data) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(
+        fillColor = ~color_palette(total_count),  # Use white for 0
+        fillOpacity = 1,  # Adjust fill opacity for better visibility
+        weight = 0.3,
+        opacity = 0.5,
+        color = 'black',  # Black border for better contrast
+        dashArray = '3',
+        highlight = highlightOptions(
+          weight = 5,
+          color = "white",
+          dashArray = "",
+          fillOpacity = 1,
+          bringToFront = TRUE
+        ),
+        popup = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, "; Total Cases (5Yr):", total_count),
+        label = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, "; Total Cases (5Yr):", total_count),
+        labelOptions = labelOptions(
+          style = list("font-weight" = "normal", padding = "3px 8px"),
+          textsize = "10px",
+          direction = "auto"
+        )
+      ) %>%
+      addLegend(
+        colors = c(color_palette(c(1, 2, 3, 4, 5))),  # Custom colors for legend
+        labels = legend_labels,
+        opacity = 1,
+        title = "Cumulative years",
+        position = "bottomright"
+      ) %>%
+      addEasyButton(easyButton(
+        icon = "fa-globe", title = "Reset View",
+        onClick = JS(paste0("function(btn, map){ map.setView([", 50.50, ", ", 4.35, "], ", 7.5, "); }"))
+      ))
+  })
+  
+  # Show the data table for the cumulative Aedes data
+  output$cumulative_aedes_table <- renderDT({
+    # Access the reactive data within the renderDT context
+    sf_data <- postcode_aedes_positive_5y() # Correct reactive value
+    
+    # Check if the data is available
+    req(nrow(sf_data) > 0)
+    
+    # Render the datatable
+    datatable(
+      sf_data %>%
+        dplyr::select(Postcode, Municipality, total_count) %>%
+        dplyr::rename(
+          "Post Code" = Postcode,
+          "Municipality" = Municipality,
+          "Total Cases (Last 5 Yr)" = total_count
+        ),
+      options = list(pageLength = 50)
+    )
+  })
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+#######################################
+  # Data management functions
+#######################################
 
   # Observe file input changes and reset the message
   observeEvent(input$file1, {
