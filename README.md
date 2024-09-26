@@ -5,18 +5,19 @@ Welcome to the DENVAedes-Alert-BE App, an interactive dashboard designed to prov
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [App Structure](#app-structure)
-3. [User Guide](#user-guide)
+3. [Dashboard Architecture](#dashboard-architecture)
+4. [User Guide](#user-guide)
    - [About Tab](#about-tab)
    - [Realtime Risk Tab](#realtime-risk-tab)
    - [Historical Risk Tab](#historical-risk-tab)
    - [Cumulative Dengue Cases Tab](#cumulative-dengue-cases-tab)
    - [Cumulative Aedes Positive Years Tab](#cumulative-aedes-positive-years-tab)
    - [Data Management Tab](#data-management-tab)
-4. [Data Requirements and Format](#data-requirements-and-format)
-5. [Post Code / Shape File Data Notes](#post-code--shape-file-data-notes)
-6. [Frequently Asked Questions](#frequently-asked-questions)
-7. [Technical Notes and Troubleshooting](#technical-notes-and-troubleshooting)
-8. [Known Issues](#known-issues)
+5. [Data Requirements and Format](#data-requirements-and-format)
+6. [Post Code / Shape File Data Notes](#post-code--shape-file-data-notes)
+7. [Frequently Asked Questions](#frequently-asked-questions)
+8. [Technical Notes and Troubleshooting](#technical-notes-and-troubleshooting)
+9. [Known Issues](#known-issues)
 
 ---
 
@@ -34,6 +35,21 @@ The application consists of several tabs, each dedicated to a specific type of a
 4. **Cumulative Dengue Cases:** Shows cumulative Dengue cases over the last five years.
 5. **Cumulative Aedes Positive Years:** Visualizes cumulative Aedes mosquito surveillance data.
 6. **Data Management:** Tools for uploading, verifying, and deleting data.
+
+---
+
+## Dashboard Architecture
+The app uses Shiny's architecture to support multiple users, each operating in their own isolated session. This means that each user has their own reactive context, and their interactions and changes within the app do not affect other users’ sessions in real-time. However, it's important to note that any data updates made by a user—such as uploading new datasets or deleting existing data—are applied to the global environment. As a result, these changes will become visible to all users once they refresh their app session.
+
+### Important Notes:
+1. **Global Variables:**
+   The global variables like `aedes_data`, `dengue_data`, and `postaldistricts` are shared across all sessions. This means that any updates made to these variables will be visible to all users. If the intention is to allow users to manipulate their own datasets independently, then these variables should be made session-specific.
+
+2. **Reactive Values:**
+   The app uses `reactiveValues` to store data frames within a session context (`data_values`). This is a good practice as it allows session-specific data handling and ensures that user interactions do not interfere with each other’s sessions.
+
+3. **File Uploads and Deletions:**
+   Any uploaded file or deletion of data affects the global variables, which means these changes will be visible to all users. For individual file uploads per session, you can store the uploaded files in `reactiveValues` within the session. If you require session-specific data handling, consider avoiding global assignments and instead use session-specific storage mechanisms.
 
 ---
 
@@ -145,12 +161,8 @@ For further assistance, consult the project documentation or contact the project
 
 ---
 
-## Known issues
+## Known Issues
 
 1. **Dengue data does not match BEPOST postcodes list:**
 
-
-
-
----
 This manual should serve as a comprehensive guide to using the DENVAedes-Alert-BE App. If you have any additional questions, feel free to reach out to the development team for support. Happy analyzing!
