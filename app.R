@@ -24,6 +24,7 @@ if (!exists("aedes_data")) {
     Latitude = numeric(),
     Longitude = numeric(),
     Site_type = character(),
+    Status = character(),
     Detection_date = as.Date(character()),
     stringsAsFactors = FALSE
   )
@@ -62,8 +63,8 @@ ui <- dashboardPage(
       menuItem("About", tabName = "About"),
       menuItem("Realtime risk", tabName = "RealtimeRisk"),
       menuItem("Historical risk", tabName = "HistoricalRisk"),
-      menuItem("Cumulative dengue cases 5y", tabName = "CumulativeDengue"),
-      menuItem("Cumulative Aedes Positive Years", tabName = "CumulativeAedes"),  # New tab for Aedes data
+      menuItem("Cumulative DF cases (5Yr)", tabName = "CumulativeDengue"), # Counts 0 to 5, 5th year will be incomplete
+      menuItem("Cumulative Aedes detections (5Yr)", tabName = "CumulativeAedes"),  # Counts 0 to 5, 5th year will be incomplete
       menuItem("Data management", tabName = "DataManagement")
     )
   ),
@@ -77,7 +78,7 @@ ui <- dashboardPage(
               div(class = "markdown-body", includeMarkdown("README.md"))
       ),
       tabItem(tabName = "RealtimeRisk",
-              h1("Realtime Risk Analysis"),
+              h1("Realtime Overlap Analysis"),
               br(),
               h3(textOutput("current_date_display")),
               # Conditional Panel for Warning Message
@@ -99,7 +100,7 @@ ui <- dashboardPage(
                 # Add this line
       ),  # Add the closing parenthesis for the tabItem
       tabItem(tabName = "HistoricalRisk",
-              h1("Historical Risk Analysis"),
+              h1("Historical Overlap Analysis"),
               br(),
               # Year selection dropdown
               selectInput("year_select", "Select Year:", choices = NULL),
@@ -116,17 +117,17 @@ ui <- dashboardPage(
               DTOutput("historical_aedes_dengue_table")
       ),
       tabItem(tabName = "CumulativeDengue",
-              h1("Cumulative Dengue Cases Over the Last 5 Years"),
+              h1("Cumulative DF Cases (5Yr)"),
               leafletOutput("cumulative_dengue_map", height = "600px"),
               br(),
-              h2("Dengue Cases Summary Table"),
+              h2("Cumulative DF Cases Summary Table (5Yr)"),
               DTOutput("cumulative_dengue_table")
       ), 
       tabItem(tabName = "CumulativeAedes",  # New tab content for Aedes data
-              h1("Cumulative Aedes Positive Years (Last 5 Years)"),
+              h1("Cumulative Aedes Detections (5Yr)"),
               leafletOutput("cumulative_aedes_map", height = "600px"),  # Leaflet map output
               br(),
-              h2("Aedes Positive Years Summary Table"),
+              h2("Cumulative Aedes Detections (5Yr) Summary Table"),
               DTOutput("cumulative_aedes_table")  # Data table output
       ),
       tabItem(tabName = "DataManagement",
@@ -223,9 +224,10 @@ server <- function(input, output, session) {
   
   
   current_date <- reactive({
-    current_date <- '2023-12-28'
+    current_date <- Sys.Date()
     as.Date(current_date, format = "%Y-%m-%d")
   })
+  
   
   # Render the current date for display
   output$current_date_display <- renderText({
@@ -234,7 +236,7 @@ server <- function(input, output, session) {
   
   # Reactive expression to calculate start_date based on slider input
   start_date <- reactive({
-    current_date() - (input$weeks_before * 60)  # Changed to multiply by 7 for weeks
+    current_date() - (input$weeks_before * 7)  # Changed to multiply by 7 for weeks
   })
   
   aedes_data_filtered <- reactive({
@@ -375,6 +377,7 @@ server <- function(input, output, session) {
         Aedes_site_codes = Site_codes, 
         Aedes_site_type = Site_type, 
         Aedes_detection_date = Detection_date,
+        Aedes_Status = Status,
         DF_case_sample_ID = Sample_ID, 
         DF_case_report_date = Report_date,
         DF_case_source_country = Source_country
@@ -389,6 +392,12 @@ server <- function(input, output, session) {
       options = list(pageLength = 50)
     )
   })
+  
+  
+  
+  #################################################################################################################
+  # Historical overlaps function
+  #################################################################################################################
 
   # Reactive expression to get common years between aedes_data and dengue_data
   common_years <- reactive({
@@ -414,10 +423,16 @@ server <- function(input, output, session) {
   })
   
   
-  # Update year_select dropdown with common years
+  # Update year_select dropdown with common years in reverse order and set a default
   observe({
-    updateSelectInput(session, "year_select", choices = common_years())
+    updateSelectInput(session, "year_select", 
+                      choices = rev(common_years()), # Reverse the choices
+                      selected = tail(common_years(), 1)) # Set default as the most recent year
   })
+  
+  
+
+  
   
   # Reactive expression to filter aedes_data based on selected year
   aedes_data_filtered_historical <- reactive({
@@ -460,9 +475,6 @@ server <- function(input, output, session) {
   })
   
   
-  #################################################################################################################
-  # Historical overlaps function
-  #################################################################################################################
   
   
   
@@ -579,11 +591,12 @@ server <- function(input, output, session) {
     
     datatable(
       aedes_dengue_matches_historical() %>%
-        select(-Latitude, -Longitude, -Observation_ID) %>%
+        select(-Latitude, -Longitude, -Observation_ID, -Report_month) %>%
         rename(
           Aedes_site_codes = Site_codes, 
           Aedes_site_type = Site_type, 
           Aedes_detection_date = Detection_date,
+          Aedes_Status = Status,
           DF_case_sample_ID = Sample_ID, 
           DF_case_report_date = Report_date,
           DF_case_source_country = Source_country
@@ -657,13 +670,13 @@ server <- function(input, output, session) {
         fillOpacity = 0.7,
         color = "#BDBDC3",
         weight = 1,
-        popup = ~paste("Post Code:", Postcode, "; Dengue Cases (5Yr):", count)
+        popup = ~paste("Post Code:", Postcode, "; DF cases (5Yr):", count)
       ) %>%
       addLegend(
         pal = pal,
         values = ~bins,
         opacity = 0.7,
-        title = "Dengue Cases (Last 5 Years)",
+        title = "DF cases (5Yr)",
         position = "bottomright"
       ) %>%
       addEasyButton(easyButton(
@@ -686,7 +699,7 @@ server <- function(input, output, session) {
         dplyr::select(Postcode, count) %>%
         dplyr::rename(
           "Post Code" = Postcode,
-          "Dengue Cases (Last 5 Yr)" = count
+          "DF Cases (5Yr)" = count
         ),
       options = list(pageLength = 50)
     )
@@ -770,8 +783,8 @@ server <- function(input, output, session) {
           fillOpacity = 1,
           bringToFront = TRUE
         ),
-        popup = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, "; Total Cases (5Yr):", total_count),
-        label = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, "; Total Cases (5Yr):", total_count),
+        popup = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, "; Total detections (5Yr):", total_count),
+        label = ~paste("Municipality: ", Municipality, "; Postcode:", Postcode, ";  Total detections (5Yr):", total_count),
         labelOptions = labelOptions(
           style = list("font-weight" = "normal", padding = "3px 8px"),
           textsize = "10px",
@@ -806,7 +819,7 @@ server <- function(input, output, session) {
         dplyr::rename(
           "Post Code" = Postcode,
           "Municipality" = Municipality,
-          "Total Cases (Last 5 Yr)" = total_count
+          "Total Detections (Last 5 Yr)" = total_count
         ),
       options = list(pageLength = 50)
     )
@@ -856,7 +869,7 @@ server <- function(input, output, session) {
       
       # Validate columns
       required_columns <- c("Observation_ID", "Site_codes", "Municipality", 
-                            "Postcode", "Latitude", "Longitude", "Site_type", "Detection_date")
+                            "Postcode", "Latitude", "Longitude", "Site_type", "Detection_date", "Status")
       
       if (!all(required_columns %in% colnames(uploaded_file))) {
         shinyalert("Error", "The uploaded file does not have the required columns.", type = "error")
@@ -877,6 +890,7 @@ server <- function(input, output, session) {
       if (!all(uploaded_file$Latitude >= -90 & uploaded_file$Latitude <= 90)) validation_errors <- c(validation_errors, "Latitude must be between -90 and 90 degrees.")
       if (!all(uploaded_file$Longitude >= -180 & uploaded_file$Longitude <= 180)) validation_errors <- c(validation_errors, "Longitude must be between -180 and 180 degrees.")
       if (!is.character(uploaded_file$Site_type)) validation_errors <- c(validation_errors, "Site_type must be a string.")
+      if (!is.character(uploaded_file$Status)) validation_errors <- c(validation_errors, "Status must be a string.")
       if (!all(grepl("^\\d{4}-\\d{2}-\\d{2}$", as.character(uploaded_file$Detection_date)))) validation_errors <- c(validation_errors, "Detection_date must be in YYYY-MM-DD format.")
       
       if (length(validation_errors) > 0) {
@@ -991,6 +1005,7 @@ server <- function(input, output, session) {
             Latitude = numeric(),
             Longitude = numeric(),
             Site_type = character(),
+            Status = character(),
             Detection_date = as.Date(character()),
             stringsAsFactors = FALSE
           )

@@ -16,6 +16,7 @@ Welcome to the DENVAedes-Alert-BE App, an interactive dashboard designed to prov
 5. [Post Code / Shape File Data Notes](#post-code--shape-file-data-notes)
 6. [Frequently Asked Questions](#frequently-asked-questions)
 7. [Technical Notes and Troubleshooting](#technical-notes-and-troubleshooting)
+8. [Known Issues](#known-issues)
 
 ---
 
@@ -144,4 +145,12 @@ For further assistance, consult the project documentation or contact the project
 
 ---
 
+## Known issues
+
+1. **Dengue data does not match BEPOST postcodes list:**
+
+
+
+
+---
 This manual should serve as a comprehensive guide to using the DENVAedes-Alert-BE App. If you have any additional questions, feel free to reach out to the development team for support. Happy analyzing!
