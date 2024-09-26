@@ -1,0 +1,12 @@
+name: DengAeAlert-BE
+title: DengueDash_Belgium
+username: dengaealert-be
+account: dengaealert-be
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12835736
+bundleId: 9148742
+url: https://dengaealert-be.shinyapps.io/DengAeAlert-BE/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
